@@ -1,0 +1,64 @@
+{
+    "token": {
+        "access_token": "<CENSORED>",
+        "token_type": "bearer",
+        "expires_in": 3888000,
+        "refresh_token": "<CENSORED>",
+        "created_at": 1579998839
+    },
+    "vehicle_name": "<CENSORED>",
+    "locations": [
+        {
+            "name": "Home",
+            "coordinates": {
+                "latitude": 10.123456,
+                "longitude": -10.123456
+            },
+            "schedule": [
+                {
+                    "start": "06:00",
+                    "end": "21:00",
+                    "wake_up": false,
+                    "valid_states": [
+                        "Stopped",
+                        "Charging",
+                        "Driving",
+                        "Complete"
+                    ]
+                },
+                {
+                    "start": "21:00",
+                    "end": "23:00",
+                    "wake_up": true,
+                    "valid_states": [
+                        "Stopped",
+                        "Charging",
+                        "Driving",
+                        "Complete"
+                    ]
+                },
+                {
+                    "start": "23:00",
+                    "end": "23:59",
+                    "wake_up": true,
+                    "valid_states": [
+                        "Charging",
+                        "Complete"
+                    ]
+                }
+            ]
+        }
+    ],
+    "alerting": [
+        {
+            "kind": "ConsoleAlertProvider"
+        },
+        {
+            "kind": "TwilioAlertProvider",
+            "account_sid": "<CENSORED>",
+            "auth_token": "<CENSORED>",
+            "from": "<CENSORED>",
+            "to": "<CENSORED>"
+        }
+    ]
+}

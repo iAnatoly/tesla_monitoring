@@ -1,0 +1,28 @@
+# Tesla charge state monitoring
+
+Have you ever forgot to put your Tesla on charger, and woke up to a barely charged vehicle?
+If you did, here is a solution for all of your problems! Well, for one of your problems.
+This is a simple script to monitor your car charging state, based on the location and time schedule.
+
+Features:
+* Different time schedules for different locations
+* An option for waking up (or not waking up) vehicle in specific timeframes
+* twillio notifications for alerts
+
+## How to configure the monitoring
+
+1. Create the config file, by copying the provided example:
+```
+cp tesla-monitoring.conf.json.example tesla-monitoring.conf.json
+```
+
+2. Get the Tesla API token. Simply run `get-tesla-token.py`, and paste the output into `token` section of the config file
+
+3. Adjust the schedule and location (hopefully, your home and/or workplace) 
+
+4. Fill in your Twilio account details in the alerting section. If you do not have a Twilio account, go create one. It is free, and it allows you to send yourself SMS.
+
+5. Schedule the script to run via crontab. I set it to run every 30 minutes, so I can use the schedule config to flexibly change the timeframes. 
+I recommend running this on some always-on home server (NAS, RaspberyPI, OpenWRT router, etc). The device needs to be able to run python, obviously.
+
+6. Enjoy.
