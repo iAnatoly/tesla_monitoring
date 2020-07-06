@@ -126,6 +126,14 @@ class ScheduleManager:
                 self.alert_mgr.alert('Vehicle state "{}" is invalid at location "{}" for schedule {}-{}'.format(state,schedule["name"],schedule["start"], schedule["end"]))
         return False
 
+    def validate_current(self, current):
+        for schedule in self.filtered_schedules:
+            if "min_current" in schedule and current < int(schedule["min_current"]):
+                self.alert_mgr.alert('Requestedd current "{}" is too low for location "{}" for schedule {}-{}'.format(current,schedule["name"],schedule["start"], schedule["end"]))
+            if "max_current" in schedule and current > int(schedule["max_current"]):
+                self.alert_mgr.alert('Requestedd current "{}" is too high for location "{}" for schedule {}-{}'.format(current,schedule["name"],schedule["start"], schedule["end"]))
+
+
 async def main():
     with open('tesla-monitoring.conf.json') as conf_file:
         config = json.load(conf_file)
@@ -169,6 +177,11 @@ async def main():
         charge_state = await vehicle.charge.get_state()
         
         sch_mgr.validate_state(charge_state['charging_state'])
+
+        if int(charge_state["charger_pilot_current"])>0:
+            req = int(charge_state["charge_current_request"])
+            sch_mgr.validate_current(req)
+        # print(json.dumps(charge_state, indent=4))
 
     except (VehicleOfflineException,NoScheduleException,NoLocationException) as ex:
         alert_mgr.info(ex)
