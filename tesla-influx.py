@@ -29,13 +29,13 @@ async def main():
         assert hbr_config
 
     try:
-        timestamp = int(time.time()-1)
+        timestamp = int(time.time_ns())
         target_vin = hbr_config["accessories"][0]['vin']
         # mock a token structure to match the target format
         token = {
                 "access_token": hbr_config["accessories"][0]["authToken"],
                 "expires_in": 3888000,      # does not matter
-                "created_at": timestamp,    # just now
+                "created_at": timestamp/1000000000,    # just now
                 "refresh_token": ""         # does not matter
         }
         client = TeslaApiClient(token=token)
@@ -47,19 +47,26 @@ async def main():
         if vehicle is None:
             raise VehicleNotFoundException('Vehicle {} not found'.format(vin))
 
-        # if vehicle is offline, check if any of the schedules allow waking up. Wake up or quit
+        # if vehicle is offline, do not wake it up - just skip the whole thing
         if vehicle.state != 'online':
             raise Exception("Vehicle is offline. That is OK.")
 
 
-        # TODO: maybe grab the whole config?
-        drive_state = await vehicle.get_drive_state()
-        charge_state = await vehicle.charge.get_state()
+        vehicle_data = await vehicle.get_data()
+        drive_state = vehicle_data["drive_state"]
+        charge_state = vehicle_data["charge_state"]
+        climate_state = vehicle_data["climate_state"]
+        vehicle_state = vehicle_data["vehicle_state"]
+        
+        # inject odometer and temp into drive_state
+        drive_state["odometer"] = vehicle_data["vehicle_state"]["odometer"]
+        drive_state["outside_temp"] = vehicle_data["climate_state"]["outside_temp"]
+        drive_state["inside_temp"] = vehicle_data["climate_state"]["inside_temp"]
         
         json_body = [
             {
                 'measurement': 'charge_state',
-        '        tags': {
+                'tags': {
                     'vin': target_vin,
                 },
                 'time': timestamp,
@@ -67,14 +74,14 @@ async def main():
             },
             {
                 'measurement': 'drive_state',
-        '        tags': {
+                'tags': {
                     'vin': target_vin,
                 },
                 'time': timestamp,
                 'fields': drive_state,
-            }
+            },
         ]
-        # TODO: place this in local conf
+
         influx_config=config['influx']
         assert influx_config 
 
