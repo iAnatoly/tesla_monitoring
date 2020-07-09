@@ -104,12 +104,14 @@ async def main():
     except Exception as ex:
         log(ex)
         needs_alert = 0 if type(ex) is VehicleOfflineException else 1
+        if needs_alert:
+            log('error should result in an alert')
         json_body = [
             {
                 "measurement": "authz_state",
                 'time': timestamp,
                 'fields': {
-                    'authz_state': needs_alert,
+                    'needs_alert': needs_alert,
                 }
             }
         ]
