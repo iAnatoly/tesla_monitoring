@@ -7,6 +7,9 @@
 
 """
 
+import warnings
+warnings.filterwarnings("ignore", module="aioinflux")
+
 import asyncio
 import json
 import time
