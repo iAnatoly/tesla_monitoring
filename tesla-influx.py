@@ -22,6 +22,13 @@ from aioinflux import InfluxDBClient
 def log(msg):
     print(msg)
 
+class VehicleOfflineException(Exception):
+    pass
+
+class VehicleNotFoundException(Exception):
+    pass
+
+
 async def main():
     with open('tesla-influx.conf.json') as conf_file:
         config = json.load(conf_file)
@@ -52,8 +59,7 @@ async def main():
 
         # if vehicle is offline, do not wake it up - just skip the whole thing
         if vehicle.state != 'online':
-            raise Exception("Vehicle is offline. That is OK.")
-
+            raise VehicleOfflineException("Vehicle is offline. That is OK.")
 
         vehicle_data = await vehicle.get_data()
         drive_state = vehicle_data["drive_state"]
@@ -97,12 +103,13 @@ async def main():
 
     except Exception as ex:
         log(ex)
+        needs_alert = 0 if type(ex) is VehicleOfflineException else 1
         json_body = [
             {
                 "measurement": "authz_state",
                 'time': timestamp,
                 'fields': {
-                    'authz_state': 0,
+                    'authz_state': needs_alert,
                 }
             }
         ]
