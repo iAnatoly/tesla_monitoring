@@ -22,11 +22,39 @@ from aioinflux import InfluxDBClient
 def log(msg):
     print(msg)
 
-class VehicleOfflineException(Exception):
+class SoftException(Exception):
+    pass
+
+class VehicleOfflineException(SoftException):
     pass
 
 class VehicleNotFoundException(Exception):
     pass
+
+class TooSoonException(SoftException):
+    pass
+
+def get_influx(influx_config):
+    assert influx_config 
+    return InfluxDBClient(
+            host=influx_config['host'], 
+            port=influx_config['port'], 
+            username=influx_config['username'],
+            password=influx_config['password'],
+            db=influx_config['db'])
+
+
+async def get_influx_measurement(influx_config,measurement,field):
+    async with get_influx(influx_config) as influx_client:
+        resp = await influx_client.query('select * from drive_state order by time desc limit 1')
+        values = resp['results'][0]['series'][0]['values'][0]
+        columns = resp['results'][0]['series'][0]['columns']
+        return (values[columns.index('time')],values[columns.index(field)])
+
+async def dump_to_influx(influx_config, json_body):
+    async with get_influx(influx_config) as influx_client:
+        await influx_client.write(json_body)
+    
 
 
 async def main():
@@ -56,6 +84,15 @@ async def main():
 
         if vehicle is None:
             raise VehicleNotFoundException('Vehicle {} not found'.format(vin))
+
+        (lasttime,shift_state) = await get_influx_measurement(config['influx'], 'drive_satte','shift_state')
+
+        # backoff if the car is napping
+        if shift_state is None:
+            lasttime = datetime.fromtimestamp(lasttime/(10**9))
+            diff = datetime.now() - lasttime
+            if diff.seconds < 15*60:
+                raise TooSoonException("Too soon")
 
         # if vehicle is offline, do not wake it up - just skip the whole thing
         if vehicle.state != 'online':
@@ -93,7 +130,7 @@ async def main():
                 "measurement": "authz_state",
                 'time': timestamp,
                 'fields': {
-                    'authz_state': 1,
+                    'needs_alert': 0,
                 }
             }
         ]
@@ -103,9 +140,10 @@ async def main():
 
     except Exception as ex:
         log(ex)
-        needs_alert = 0 if type(ex) is VehicleOfflineException else 1
+        needs_alert = 0 if isinstance(ex,SoftException) else 1
         if needs_alert:
             log('error should result in an alert')
+
         json_body = [
             {
                 "measurement": "authz_state",
@@ -121,16 +159,5 @@ async def main():
     finally:
         await client.close()
 
-async def dump_to_influx(influx_config, json_body):
-        assert influx_config 
-
-        async with InfluxDBClient(
-                host=influx_config['host'], 
-                port=influx_config['port'], 
-                username=influx_config['username'],
-                password=influx_config['password'],
-                db=influx_config['db']) as influx_client:
-            await influx_client.write(json_body)
-        
 if __name__=='__main__':
     asyncio.run(main())
