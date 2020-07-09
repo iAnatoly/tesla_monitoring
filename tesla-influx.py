@@ -83,9 +83,36 @@ async def main():
                 'time': timestamp,
                 'fields': drive_state,
             },
+            {
+                "measurement": "authz_state",
+                'time': timestamp,
+                'fields': {
+                    'authz_state': 1,
+                }
+            }
         ]
 
-        influx_config=config['influx']
+        await dump_to_influx(config['influx'], json_body)
+
+
+    except Exception as ex:
+        log(ex)
+        json_body = [
+            {
+                "measurement": "authz_state",
+                'time': timestamp,
+                'fields': {
+                    'authz_state': 0,
+                }
+            }
+        ]
+        await dump_to_influx(config['influx'], json_body)
+
+        #    raise ex
+    finally:
+        await client.close()
+
+async def dump_to_influx(influx_config, json_body):
         assert influx_config 
 
         async with InfluxDBClient(
@@ -95,11 +122,6 @@ async def main():
                 password=influx_config['password'],
                 db=influx_config['db']) as influx_client:
             await influx_client.write(json_body)
-
-    except Exception as ex:
-        log(ex)
-    finally:
-        await client.close()
         
 if __name__=='__main__':
     asyncio.run(main())
