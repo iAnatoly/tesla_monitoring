@@ -97,7 +97,7 @@ async def main():
             if diff.seconds < 15*60:
                 raise TooSoonException("Too soon")
         else:
-            print('not waiting because shift_state is {}'.format(shift_state))
+            print('not waiting because power is {}'.format(power))
 
         # if vehicle is offline, do not wake it up - just skip the whole thing
         if vehicle.state != 'online':
