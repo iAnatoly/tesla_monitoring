@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-import asyncio
 import json
 from getpass import getpass
-from tesla_api import TeslaApiClient
+from datetime import datetime, timedelta
+import teslapy
+
 
 def get_credentials(default_email):
     login = input('Enter your tesla.com login: [default={}]: '.format(default_email))
@@ -14,18 +15,29 @@ def get_credentials(default_email):
     return (login, password)
 
     
-async def main():
+def main():
     while True:
         try:
             (username, password) = get_credentials('anatoly.ivanov@gmail.com')
-            client = TeslaApiClient(username, password)
-            await client.authenticate()
-            print('"token": ', json.dumps(client.token, indent=4))
-            await client.close()
+            with teslapy.Tesla(username, password) as client:
+                client.fetch_token()
+                while True:
+                    validto = datetime.fromtimestamp(client.token['created_at']+client.token['expires_in'])
+                    print(f'Token valid till: {validto}')
+                    if validto > datetime.now() + timedelta(days=7):
+                        break
+                    print('Expires soon, refreshing token...')
+                    client.refresh_token()
+
+                print('"token": ', json.dumps(client.token, indent=4))
             break
-        except:
-            print('this did not work, let us ttry taht again')
+        except KeyboardInterrupt as ex:
+            print('Aborted')
+            break
+        except Exception as ex:
+            print(f'this did not work: {ex.message}, let us try that again')
+
 
 
 if __name__=='__main__':
-    asyncio.run(main())
+    main()
