@@ -46,10 +46,13 @@ def get_influx(influx_config):
 
 async def get_influx_measurement(influx_config,measurement,field):
     async with get_influx(influx_config) as influx_client:
-        resp = await influx_client.query('select * from drive_state order by time desc limit 1')
-        values = resp['results'][0]['series'][0]['values'][0]
-        columns = resp['results'][0]['series'][0]['columns']
-        return (values[columns.index('time')],values[columns.index(field)])
+        try:
+            resp = await influx_client.query('select * from drive_state order by time desc limit 1')
+            values = resp['results'][0]['series'][0]['values'][0]
+            columns = resp['results'][0]['series'][0]['columns']
+            return (values[columns.index('time')],values[columns.index(field)])
+        except:
+            return (0,0)
 
 async def dump_to_influx(influx_config, json_body):
     async with get_influx(influx_config) as influx_client:
@@ -85,14 +88,16 @@ async def main():
         if vehicle is None:
             raise VehicleNotFoundException('Vehicle {} not found'.format(vin))
 
-        (lasttime,shift_state) = await get_influx_measurement(config['influx'], 'drive_satte','shift_state')
+        (lasttime,power) = await get_influx_measurement(config['influx'], 'drive_state','power')
 
         # backoff if the car is napping
-        if shift_state is None:
+        if power is None or power==0:
             lasttime = datetime.fromtimestamp(lasttime/(10**9))
             diff = datetime.now() - lasttime
             if diff.seconds < 15*60:
                 raise TooSoonException("Too soon")
+        else:
+            print('not waiting because power is {}'.format(power))
 
         # if vehicle is offline, do not wake it up - just skip the whole thing
         if vehicle.state != 'online':
