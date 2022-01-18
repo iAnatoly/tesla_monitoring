@@ -6,7 +6,6 @@
     3. Dump tesla json info influx
 
 """
-
 import warnings
 warnings.filterwarnings("ignore", module="aioinflux")
 
@@ -17,6 +16,9 @@ from datetime import datetime
 from tesla_api import TeslaApiClient
 #from influxdb import InfluxDBClient
 from aioinflux import InfluxDBClient
+
+REFRESH_BACKOFF = 15*60
+WAKEUP_BACKOFF = 60*60*4
 
 
 def log(msg):
@@ -89,19 +91,24 @@ async def main():
             raise VehicleNotFoundException('Vehicle {} not found'.format(vin))
 
         (lasttime,power) = await get_influx_measurement(config['influx'], 'drive_state','power')
+        lasttime = datetime.fromtimestamp(lasttime/(10**9))
 
         # backoff if the car is napping
         if power is None or power==0:
-            lasttime = datetime.fromtimestamp(lasttime/(10**9))
             diff = datetime.now() - lasttime
-            if diff.seconds < 15*60:
+            if diff.seconds < REFRESH_BACKOFF: 
                 raise TooSoonException("Too soon")
         else:
             print('not waiting because power is {}'.format(power))
 
         # if vehicle is offline, do not wake it up - just skip the whole thing
         if vehicle.state != 'online':
-            raise VehicleOfflineException("Vehicle is offline. That is OK.")
+            diff = datetime.now() - lasttime
+            if diff.seconds < WAKEUP_BACKOFF:
+                raise VehicleOfflineException("Vehicle is offline. That is OK.")
+            else:
+                log(f'Waking up the vehicle since it has been {diff.seconds} seconds since last update')
+                await vehicle.wake_up()
 
         vehicle_data = await vehicle.get_data()
         drive_state = vehicle_data["drive_state"]
