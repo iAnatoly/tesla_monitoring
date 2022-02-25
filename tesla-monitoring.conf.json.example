@@ -12,7 +12,8 @@
             "name": "Home",
             "coordinates": {
                 "latitude": 10.123456,
-                "longitude": -10.123456
+                "longitude": -10.123456,
+                "precision": 0.00005
             },
             "schedule": [
                 {
@@ -59,6 +60,12 @@
             "auth_token": "<CENSORED>",
             "from": "<CENSORED>",
             "to": "<CENSORED>"
+        },
+        {
+            "kind": "TelegramAlertProvider",
+            "auth_token": "<censored>",
+            "chat_id": <censored integer>
         }
+
     ]
 }
