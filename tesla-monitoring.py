@@ -2,6 +2,7 @@
 import asyncio
 import json
 import time
+import requests
 from datetime import datetime
 
 # vendors
@@ -69,10 +70,12 @@ class TwilioAlertProvider(AlertProvider):
 
 class TelegramAlertProvider(AlertProvider):
     def info(self, message):
-        raise NotImplementedError()
+        pass
 
-    def alert(self,message):
-        raise NotImplementedError()
+    def alert(self, message):
+        token = self.params["auth_token"]
+        chat_id = self.params["chat_id"]
+        response = requests.post(f'https://api.telegram.org/bot{token}/sendMessage',data={'chat_id': chat_id, 'text': message})
 
 class ScheduleManager:
     def __init__(self, locations, alert_mgr):
@@ -110,7 +113,7 @@ class ScheduleManager:
             lat = loc["coordinates"]["latitude"]
             lon = loc["coordinates"]["longitude"]
 
-            print(lat, latitude, lon, longitude)
+            # print(lat, latitude, lon, longitude)
 
             if (abs(lat-latitude) < precision and abs(lon-longitude) < precision):
                 self.filtered_schedules.append(loc)
@@ -120,17 +123,16 @@ class ScheduleManager:
     def validate_state(self, state):
         for schedule in self.filtered_schedules:
             if state in schedule['valid_states']:
-                self.alert_mgr.info('state "{}" is valid : {}'.format(state,schedule['valid_states']))
+                self.alert_mgr.info(f'Vehicle state "{state}" is valid : {schedule["valid_states"]}')
             else:
-                self.alert_mgr.alert('Vehicle state "{}" is invalid at location "{}" for schedule {}-{}'.format(state,schedule["name"],schedule["start"], schedule["end"]))
-        return False
+                self.alert_mgr.alert(f'Vehicle state "{state}" is invalid at location "{schedule["name"]}" for schedule {schedule["start"]}-{schedule["end"]}')
 
     def validate_current(self, current):
         for schedule in self.filtered_schedules:
             if "min_current" in schedule and current < int(schedule["min_current"]):
-                self.alert_mgr.alert('Requestedd current "{}" is too low for location "{}" for schedule {}-{}'.format(current,schedule["name"],schedule["start"], schedule["end"]))
+                self.alert_mgr.alert('Requested current "{}" is too low for location "{}" for schedule {}-{}'.format(current,schedule["name"],schedule["start"], schedule["end"]))
             if "max_current" in schedule and current > int(schedule["max_current"]):
-                self.alert_mgr.alert('Requestedd current "{}" is too high for location "{}" for schedule {}-{}'.format(current,schedule["name"],schedule["start"], schedule["end"]))
+                self.alert_mgr.alert('Requested current "{}" is too high for location "{}" for schedule {}-{}'.format(current,schedule["name"],schedule["start"], schedule["end"]))
 
 
 async def main():
@@ -148,16 +150,15 @@ async def main():
 
 
         vehicles = client.vehicle_list()
-        print(vehicles)
-
         vehicle = [ vehicle for vehicle in vehicles if vehicle["display_name"] == config["vehicle_name"] ][0]
+
         if vehicle is None:
             raise VehicleNotFoundException('Vehicle {} not found'.format(config["vehicle_name"]))
 
         sch_mgr = ScheduleManager(config["locations"], alert_mgr)
+
         if not sch_mgr.filter_schedules_by_timeslot():
             raise NoScheduleException("Cannot find applicable schedule")
-            
 
         # if vehicle is offline, check if any of the schedules allow waking up. Wake up or quit
         if vehicle["state"] != 'online':
@@ -193,9 +194,9 @@ async def main():
     except (VehicleOfflineException,NoScheduleException,NoLocationException) as ex:
         alert_mgr.info(ex)
     except Exception as ex:
-        alert_mgr.alert(ex)
+        alert_mgr.alert(f'Exception: {ex}')
     finally:
-        await client.close()
+        client.close()
 
 if __name__=='__main__':
     asyncio.run(main())
