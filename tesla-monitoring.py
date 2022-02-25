@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 # vendors
-from tesla_api import TeslaApiClient
+import teslapy
 from twilio.rest import Client as TwilioClient
 
 
@@ -29,8 +29,8 @@ class AlertManager:
                 self.alerting_providers.append(TwilioAlertProvider(alert_config))
             elif alert_config["kind"] == "ConsoleAlertProvider":
                 self.alerting_providers.append(ConsoleAlertProvider(alert_config))
-            elif alert_config["kind"] == "SlackAlertProvider":
-                self.alerting_providers.append(SlackAlertProvider(alert_config))
+            elif alert_config["kind"] == "TelegramAlertProvider":
+                self.alerting_providers.append(TelegramAlertProvider(alert_config))
             else:
                 print('Warning: unknown alerting provider: ', alert_config["kind"])
 
@@ -67,8 +67,7 @@ class TwilioAlertProvider(AlertProvider):
             to=self.params["to"]
         )
 
-#TODO: implement Slack alerting provider
-class SlackAlertProvider(AlertProvider):
+class TelegramAlertProvider(AlertProvider):
     def info(self, message):
         raise NotImplementedError()
 
@@ -141,10 +140,17 @@ async def main():
     alert_mgr = AlertManager(config['alerting'])
 
     try:
-        client = TeslaApiClient(token=config["token"])
+        # client = TeslaApiClient(token=config["token"])
+        client = teslapy.Tesla(config["token"]["login"])
+        if not client.authorized:
+            # print( config["token"]["refresh_token"] )
+            client.refresh_token(refresh_token=config["token"]["refresh_token"])
 
-        vehicles = await client.list_vehicles()
-        vehicle = [ vehicle for vehicle in vehicles if vehicle.display_name == config["vehicle_name"] ][0]
+
+        vehicles = client.vehicle_list()
+        print(vehicles)
+
+        vehicle = [ vehicle for vehicle in vehicles if vehicle["display_name"] == config["vehicle_name"] ][0]
         if vehicle is None:
             raise VehicleNotFoundException('Vehicle {} not found'.format(config["vehicle_name"]))
 
@@ -154,14 +160,14 @@ async def main():
             
 
         # if vehicle is offline, check if any of the schedules allow waking up. Wake up or quit
-        if vehicle.state != 'online':
+        if vehicle["state"] != 'online':
             if sch_mgr.can_wake_up():
                 alert_mgr.info("One or more schedules allow vehicle to be woken up")
-                await vehicle.wake_up()
+                vehicle.sync_wake_up()
                 while True:
                     try:
                         time.sleep(3)
-                        drive_state = await vehicle.get_drive_state()
+                        vehicle_data = vehicle.get_vehicle_data()
                         break
                     except:
                         pass
@@ -169,13 +175,14 @@ async def main():
             else:
                 raise VehicleOfflineException("Vehicle is offline, and none of the schedules allow wake up")
         else:                
-            drive_state = await vehicle.get_drive_state()
+            vehicle_data = vehicle.get_vehicle_data()
+        
+        charge_state = vehicle_data["charge_state"]
+        drive_state = vehicle_data["drive_state"]
         
         if not sch_mgr.filter_schedules_by_location(drive_state["latitude"], drive_state["longitude"]):
             raise NoLocationException("Vehicle is not at a known location")
 
-        charge_state = await vehicle.charge.get_state()
-        
         sch_mgr.validate_state(charge_state['charging_state'])
 
         if int(charge_state["charger_pilot_current"])>0:
