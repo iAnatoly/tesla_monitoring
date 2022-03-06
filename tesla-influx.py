@@ -12,14 +12,13 @@ warnings.filterwarnings("ignore", module="aioinflux")
 import asyncio
 import json
 import time
+import traceback
+import teslapy
 from datetime import datetime
-from tesla_api import TeslaApiClient
-#from influxdb import InfluxDBClient
 from aioinflux import InfluxDBClient
 
 REFRESH_BACKOFF = 15*60
 WAKEUP_BACKOFF = 60*60*4
-
 
 def log(msg):
     print(msg)
@@ -59,8 +58,6 @@ async def get_influx_measurement(influx_config,measurement,field):
 async def dump_to_influx(influx_config, json_body):
     async with get_influx(influx_config) as influx_client:
         await influx_client.write(json_body)
-    
-
 
 async def main():
     with open('tesla-influx.conf.json') as conf_file:
@@ -79,13 +76,15 @@ async def main():
                 "access_token": hbr_config["accessories"][0]["authToken"],
                 "expires_in": 3888000,      # does not matter
                 "created_at": timestamp/1000000000,    # just now
-                "refresh_token": ""         # does not matter
+                "refresh_token": hbr_config["accessories"][0]["refreshToken"]
         }
-        client = TeslaApiClient(token=token)
 
-        vehicles = await client.list_vehicles()
-        
-        vehicle = [ vehicle for vehicle in vehicles if vehicle.vin == target_vin ][0]
+        client = teslapy.Tesla(hbr_config["accessories"][0]["email"])
+        if not client.authorized:
+            client.refresh_token(refresh_token=token["refresh_token"])
+
+        vehicles = client.vehicle_list()
+        vehicle = [ vehicle for vehicle in vehicles if vehicle["vin"] == target_vin ][0]
 
         if vehicle is None:
             raise VehicleNotFoundException('Vehicle {} not found'.format(vin))
@@ -102,15 +101,15 @@ async def main():
             print('not waiting because power is {}'.format(power))
 
         # if vehicle is offline, do not wake it up - just skip the whole thing
-        if vehicle.state != 'online':
+        if vehicle["state"] != 'online':
             diff = datetime.now() - lasttime
             if diff.seconds < WAKEUP_BACKOFF:
                 raise VehicleOfflineException("Vehicle is offline. That is OK.")
             else:
                 log(f'Waking up the vehicle since it has been {diff.seconds} seconds since last update')
-                await vehicle.wake_up()
+                vehicle.sync_wake_up()
 
-        vehicle_data = await vehicle.get_data()
+        vehicle_data = vehicle.get_vehicle_data()
         drive_state = vehicle_data["drive_state"]
         charge_state = vehicle_data["charge_state"]
         climate_state = vehicle_data["climate_state"]
@@ -146,13 +145,18 @@ async def main():
                 }
             }
         ]
-
+        
+        print(json_body)
         await dump_to_influx(config['influx'], json_body)
 
 
     except Exception as ex:
+        # print(traceback.format_exc())
+        log(type(ex).__name__)
         log(ex)
-        needs_alert = 0 if isinstance(ex,SoftException) else 1
+        needs_alert = 1 if isinstance(ex,SoftException) else 1
+        if needs_alert and "token" not in str(ex).lower():
+            needs_alert = 0
         if needs_alert:
             log('error should result in an alert')
 
@@ -169,7 +173,7 @@ async def main():
 
         #    raise ex
     finally:
-        await client.close()
+        client.close()
 
 if __name__=='__main__':
     asyncio.run(main())
